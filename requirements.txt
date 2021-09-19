@@ -1,0 +1,7 @@
+beautifulsoup4
+googlemaps
+keyring
+pendulum
+PyYaml
+selenium
+yagmail

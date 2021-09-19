@@ -1,0 +1,40 @@
+
+selenium:
+  headless: True
+  chrome_driver: PATH_TO_LOCAL_CHOME_DRIVER
+
+search:
+  host: SITE_URL_HERE
+  timezone: America/Chicago
+  #resolved_address: ::-97.7517:30.3006::Texas
+  interest: camping
+  looking_for: 2001
+  camping_occupants: NUM_OCCUPANTS
+  rv_length: RV_LENGTH
+  start_weekday: 5 # 5 == FRIDAY
+  length_of_stay: 2 # number nights
+  num_weeks: 4 # how many weeks to check
+
+travel:
+  google_api_key: API_KEY_HERE (Google Maps Directions API enabled)
+  from: FROM_ADDRESS
+  adjust_avg_mph: ADJUST_VALUE # e.g. -10 if your average speed is 10mph less than Google Maps estimate
+
+results:
+  site_include:
+    - Electric
+    - Full
+  site_exclude:
+    - Tent Only
+    - Equestrian
+  sort_key: estimated_time_seconds
+  sort_reversed: False
+
+email:
+  enabled: False
+  gmail_sender: GMAIL_ACCOUNT_EMAIL_ADDRESS@gmail.com
+  heading: "<h2>Availability for next %i weekends</h2>"
+  subject: "[%s] availability, next %i weekends"
+  to:
+    - TO_EMAIL_1
+    - TO_EMAIL_2 etc.
