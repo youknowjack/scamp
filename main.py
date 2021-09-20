@@ -20,16 +20,16 @@ class TravelTimer:
         self.cache = {}
         self.google_maps_client = google_maps_client
         self.from_location = from_location
-        self.adjust_avg_mph = adjust_avg_mph
+        self.adjust_avg_meters_per_sec = adjust_avg_mph * 1609.34 / 3600
 
     def adjust_travel_time(self, meters, estimated_seconds):
-        adjust_avg_meters_per_sec = self.adjust_avg_mph * 1609 / 3600
         avg_speed = meters / estimated_seconds
-        adjusted_speed = avg_speed + adjust_avg_meters_per_sec
-        estimated_seconds =  meters / adjusted_speed
+        adjusted_speed = avg_speed + self.adjust_avg_meters_per_sec
+        estimated_seconds = meters / adjusted_speed
         est_hours = int(estimated_seconds/3600)
         est_minutes = int((estimated_seconds-est_hours*3600)/60)
-        return (est_hours, est_minutes, round(estimated_seconds))
+        miles = meters / 1609.34
+        return est_hours, est_minutes, round(estimated_seconds), round(miles)
 
     def compute_estimate(self, to_location):
         if to_location not in self.cache:
@@ -122,6 +122,7 @@ def collect_results(driver, host, travel_timer, site_includes, site_excludes, so
                         'park': link.text,
                         'link': host + link['href'],
                         'id': park_id,
+                        'miles': est_time[3],
                         'estimated_time_seconds': est_time[2],
                         'estimated_time': "%s hours %s minutes" % (est_time[0], est_time[1]),
                         'availability': avails
@@ -175,8 +176,8 @@ def run_searches(cfg):
         email_body += "<h3>%s</h3>" % r[0]
         email_body += "<h4>Estimated travel times from %s</h4>" % from_location
         for avail in r[1]:
-            email_body += "<div><a href='%s'><b>%s</b></a> (id: %s, estimated: %s)</div><ul>" % \
-                          (avail['link'], avail['park'], avail['id'], avail['estimated_time'])
+            email_body += "<div><a href='%s'><b>%s</b></a> (%s miles, estimated %s)</div><ul>" % \
+                          (avail['link'], avail['park'], avail['miles'], avail['estimated_time'])
             for site_info in avail['availability']:
                 email_body += "<li>%s</li>" % site_info
             email_body += "</ul>"
