@@ -1,5 +1,8 @@
+import argparse
 from bs4 import BeautifulSoup
 import googlemaps
+import json
+from os.path import exists
 import pendulum
 import re
 from selenium import webdriver
@@ -10,7 +13,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.keys import Keys
 from urllib.parse import urlparse, parse_qs
-import sys
 import yagmail
 import yaml
 
@@ -44,9 +46,9 @@ class TravelTimer:
         return self.cache[to_location]
 
 
-def next_n_startdays(n, day_of_week, days_to_add, timezone):
+def next_n_startdays(n, scan_from, day_of_week, days_to_add, timezone):
     startdays = []
-    next_start = pendulum.now(timezone).add(days=-1).next(day_of_week)
+    next_start = pendulum.parse(scan_from, tz=timezone).next(day_of_week)
     for _ in range(n):
         startdays.append("%i/%i/%i" % (next_start.month, next_start.day, next_start.year))
         next_start = next_start.add(days=days_to_add)
@@ -92,7 +94,7 @@ def do_search(driver, date, nights, resolved_address, interest, looking_for, occ
     submit.click()
 
 
-def collect_results(driver, host, travel_timer, site_includes, site_excludes, sort_key, sort_reversed):
+def collect_results(driver, host, travel_timer, seen_parks, site_includes, site_excludes, sort_key, sort_reversed):
     results = []
     includes_pattern = re.compile('|'.join(site_includes))
     excludes_pattern = re.compile('|'.join(site_excludes))
@@ -120,6 +122,7 @@ def collect_results(driver, host, travel_timer, site_includes, site_excludes, so
                 if len(avails) > 0:
                     results.append({
                         'park': link.text,
+                        'seen': park_id in seen_parks,
                         'link': host + link['href'],
                         'id': park_id,
                         'miles': est_time[3],
@@ -139,12 +142,24 @@ def get_option(cfg, section, name, default=None):
     return default
 
 
-def run_searches(cfg):
+def get_prev_parks(cache_file):
+    prev_parks = {}
+    with open(cache_file) as input_file:
+        results_by_date = json.load(input_file)
+        for (day, results) in results_by_date:
+            parks = set()
+            for park_record in results:
+                parks.add(park_record['id'])
+            prev_parks[day] = parks
+    return prev_parks
+
+
+def run_searches(cfg, args):
     host = get_option(cfg, 'search', 'host')
     timezone = get_option(cfg, 'search', 'timezone')
-    start_weekday = get_option(cfg, 'search', 'start_weekday')
-    length_of_stay = get_option(cfg, 'search', 'length_of_stay')
-    num_weeks = get_option(cfg, 'search', 'num_weeks')
+    start_weekday = args.start_dow
+    length_of_stay = args.num_days
+    num_weeks = args.scan_weeks
     resolved_address = get_option(cfg, 'search', 'resolved_address')
     interest = get_option(cfg, 'search', 'interest')
     looking_for = get_option(cfg, 'search', 'looking_for')
@@ -165,38 +180,95 @@ def run_searches(cfg):
         chrome_options.add_argument('--headless')
     driver = webdriver.Chrome(cfg['selenium']['chrome_driver'], options=chrome_options)
 
-    results = []
-    for start_day in next_n_startdays(num_weeks, start_weekday, 7, timezone):
-        do_search(driver, start_day, length_of_stay, resolved_address, interest, looking_for, occupants, rv_length)
-        results.append((start_day, collect_results(
-            driver, host, travel_timer, site_includes, site_excludes, sort_key, sort_reversed)))
+    prev_parks_by_date = {}
+    if args.diff_only and args.cache_file is not None and exists(args.cache_file):
+        prev_parks_by_date = get_prev_parks(args.cache_file)
 
-    email_body = cfg['email']['heading'] % num_weeks
-    for r in results:
-        email_body += "<h3>%s</h3>" % r[0]
+    results = []
+    for start_day in next_n_startdays(num_weeks, args.scan_from, start_weekday, 7, timezone):
+        do_search(driver, start_day, length_of_stay, resolved_address, interest, looking_for, occupants, rv_length)
+        if start_day in prev_parks_by_date:
+            omit_parks = prev_parks_by_date[start_day]
+        else:
+            omit_parks = set()
+        results.append((start_day, collect_results(
+            driver, host, travel_timer, omit_parks, site_includes, site_excludes, sort_key, sort_reversed)))
+
+    if args.cache_file is not None:
+        with open(args.cache_file, "w") as results_out:
+            json.dump(results, results_out, indent=2)
+
+    if args.diff_only:
+        count = 0
+        for i in range(len(results)):
+            results[i] = (
+                results[i][0],
+                list(filter(lambda record: not record['seen'], results[i][1]))
+            )
+            count += len(results[i][1])
+        if count == 0:
+            args.send_email = False
+
+    print(json.dumps(results, indent=2))
+
+    if args.send_email:
+        start_date = results[0][0]
+        end_date = results[-1][0]
+        if start_date == end_date:
+            date_range = start_date
+        else:
+            date_range = "%s - %s" % (start_date, end_date)
+        if args.diff_only:
+            email_body = cfg['email']['heading_diff'] % (int(length_of_stay), date_range)
+        else:
+            email_body = cfg['email']['heading'] % (int(length_of_stay), date_range)
         email_body += "<h4>Estimated travel times from %s</h4>" % from_location
-        for avail in r[1]:
-            email_body += "<div><a href='%s'><b>%s</b></a> (%s miles, estimated %s)</div><ul>" % \
-                          (avail['link'], avail['park'], avail['miles'], avail['estimated_time'])
-            for site_info in avail['availability']:
-                email_body += "<li>%s</li>" % site_info
-            email_body += "</ul>"
-    email_subject = cfg['email']['subject'] % (pendulum.now(timezone).to_date_string(), num_weeks)
-    if cfg['email']['enabled']:
-        yag = yagmail.SMTP("leejack@gmail.com")
+        for r in results:
+            email_body += "<h3>%s</h3>" % r[0]
+            for avail in r[1]:
+                email_body += "<div><a href='%s'><b>%s</b></a> (%s miles, estimated %s)</div><ul>" % \
+                              (avail['link'], avail['park'], avail['miles'], avail['estimated_time'])
+                for site_info in avail['availability']:
+                    email_body += "<li>%s</li>" % site_info
+                email_body += "</ul>"
+        if args.diff_only:
+            email_subject = cfg['email']['subject_diff'] % (pendulum.now(timezone).to_date_string(), date_range,
+                                                            int(length_of_stay))
+        else:
+            email_subject = cfg['email']['subject'] % (pendulum.now(timezone).to_date_string(), date_range,
+                                                       int(length_of_stay))
+
+        yag = yagmail.SMTP(config['email']['gmail_sender'])
         yag.send(
-            to=["leejack@gmail.com", "alc2005@gmail.com"],
+            to=config['email']['to'],
             subject=email_subject,
             contents=email_body
         )
         print("Email sent (%s) at %s" % (email_subject, pendulum.now(timezone).to_datetime_string()))
-    else:
-        print(email_body)
+
     driver.quit()
 
 
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    with open(sys.argv[1], "r") as cfg_file:
+    parser = argparse.ArgumentParser(description='Scamp')
+    parser.add_argument('--cfg', dest='cfg', action='store', default='config.yaml', help='config file')
+    parser.add_argument('--no-email', dest='send_email', action='store_false',
+                        help='do not send email (default send)')
+    default_start = pendulum.now().add(days=-1).to_date_string()
+    parser.add_argument('--scan-from', dest='scan_from', action='store', default=default_start,
+                        help='date to start scan from (default yesterday: %s)' % default_start)
+    parser.add_argument('--start-dow', dest='start_dow', action='store', default=5,
+                        help='numeric day of week (Monday: 1) to look for availability (default Friday: 5)')
+    parser.add_argument('--num-days', dest='num_days', action='store', type=int, default=2,
+                        help='number of days of availability to look for (default: 2)')
+    parser.add_argument('--scan-weeks', dest='scan_weeks', action='store', type=int, default=4,
+                        help='number of weeks to scan (default: 4)')
+    parser.add_argument('--cache-file', dest='cache_file', action='store', default=None,
+                        help='Cache file to use/update for comparison')
+    parser.add_argument('--diff-only', dest='diff_only', action='store_true',
+                        help='Only show new parks since last run stored in cache file')
+    args = parser.parse_args()
+    print(args)
+    with open(args.cfg, "r") as cfg_file:
         config = yaml.load(cfg_file, Loader=yaml.FullLoader)
-        run_searches(config)
+        run_searches(config, args)

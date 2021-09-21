@@ -11,9 +11,6 @@ search:
   looking_for: 2001
   camping_occupants: NUM_OCCUPANTS
   rv_length: RV_LENGTH
-  start_weekday: 5 # 5 == FRIDAY
-  length_of_stay: 2 # number nights
-  num_weeks: 4 # how many weeks to check
 
 travel:
   google_api_key: API_KEY_HERE (Google Maps Directions API enabled)
@@ -31,10 +28,11 @@ results:
   sort_reversed: False
 
 email:
-  enabled: False
   gmail_sender: GMAIL_ACCOUNT_EMAIL_ADDRESS@gmail.com
-  heading: "<h2>Availability for next %i weekends</h2>"
-  subject: "[%s] availability, next %i weekends"
+  heading: "<h2>%i night availability for %s</h2>"
+  heading_diff: "<h2>Newly available parks, %i nights, %s</h2>"
+  subject: "[%s] RV site availability %s (%i nights)"
+  subject_diff: "[%s] New availability for %s (%i nights)"
   to:
     - TO_EMAIL_1
     - TO_EMAIL_2 etc.
