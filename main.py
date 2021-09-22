@@ -18,11 +18,12 @@ import yaml
 
 
 class TravelTimer:
-    def __init__(self, google_maps_client, from_location, adjust_avg_mph):
+    def __init__(self, google_maps_client, from_location, adjust_avg_mph, departure_time):
         self.cache = {}
         self.google_maps_client = google_maps_client
         self.from_location = from_location
         self.adjust_avg_meters_per_sec = adjust_avg_mph * 1609.34 / 3600
+        self.depart = departure_time
 
     def adjust_travel_time(self, meters, estimated_seconds):
         avg_speed = meters / estimated_seconds
@@ -35,11 +36,14 @@ class TravelTimer:
 
     def compute_estimate(self, to_location):
         if to_location not in self.cache:
-            directions = self.google_maps_client.directions(self.from_location, to_location)
+            directions = self.google_maps_client.directions(self.from_location, to_location, departure_time=self.depart)
             if directions is not None and len(directions) > 0:
                 full_trip = directions[0]['legs'][0]
                 meters = full_trip['distance']['value']
-                seconds = full_trip['duration']['value']
+                if 'duration_in_traffic' in full_trip:
+                    seconds = full_trip['duration_in_traffic']['value']
+                else:
+                    seconds = full_trip['duration']['value']
                 est_time = self.adjust_travel_time(meters, seconds)
                 self.cache[to_location] = est_time
 
@@ -169,11 +173,13 @@ def run_searches(cfg, args):
     site_excludes = get_option(cfg, 'results', 'site_exclude')
     sort_key = get_option(cfg, 'results', 'sort_key')
     sort_reversed = get_option(cfg, 'results', 'sort_reversed')
+    usual_departure_hour = get_option(cfg, 'results', 'usual_departure_hour')
 
     maps_client = googlemaps.Client(key=get_option(cfg, 'travel', 'google_api_key'))
     from_location = get_option(cfg, 'travel', 'from')
     adjust_avg_mph = get_option(cfg, 'travel', 'adjust_avg_mph', default=0)
-    travel_timer = TravelTimer(maps_client, from_location, adjust_avg_mph)
+    first_departure = pendulum.parse(args.scan_from, tz=timezone).next(start_weekday).add(hours=usual_departure_hour)
+    travel_timer = TravelTimer(maps_client, from_location, adjust_avg_mph, first_departure)
 
     chrome_options = Options()
     if cfg['selenium']['headless']:

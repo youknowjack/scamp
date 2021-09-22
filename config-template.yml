@@ -26,6 +26,7 @@ results:
     - Equestrian
   sort_key: estimated_time_seconds
   sort_reversed: False
+  usual_departure_hour: 15
 
 email:
   gmail_sender: GMAIL_ACCOUNT_EMAIL_ADDRESS@gmail.com
