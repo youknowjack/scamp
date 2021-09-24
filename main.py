@@ -223,26 +223,29 @@ def run_searches(cfg, args):
         if start_date == end_date:
             date_range = start_date
         else:
-            date_range = "%s - %s" % (start_date, end_date)
+            date_range = f"{start_date} - {end_date}"
         if args.diff_only:
-            email_body = cfg['email']['heading_diff'] % (int(length_of_stay), date_range)
+            email_body = cfg['email']['heading_diff'].format(length=length_of_stay, date=date_range)
         else:
-            email_body = cfg['email']['heading'] % (int(length_of_stay), date_range)
-        email_body += "<h4>Estimated travel times from %s</h4>" % from_location
+            email_body = cfg['email']['heading'].format(length=length_of_stay, date=date_range)
+        email_body += f"<h4>Estimated travel times from {from_location}</h4>"
         for r in results:
-            email_body += "<h3>%s</h3>" % r[0]
+            email_body += f"<h3>{r[0]}</h3>"
             for avail in r[1]:
-                email_body += "<div><a href='%s'><b>%s</b></a> (%s miles, estimated %s)</div><ul>" % \
-                              (avail['link'], avail['park'], avail['miles'], avail['estimated_time'])
+                div_template = "<div><a href='{link}'><b>{park}</b></a> {miles} miles, estimated {estimated_time}</div><ul>"
+                email_body += div_template.format(**avail)
                 for site_info in avail['availability']:
-                    email_body += "<li>%s</li>" % site_info
+                    email_body += f"<li>{site_info}</li>"
                 email_body += "</ul>"
+        subject_vars = {
+            'send_date': pendulum.now(timezone).to_date_string(),
+            'date': date_range,
+            'length': length_of_stay
+        }
         if args.diff_only:
-            email_subject = cfg['email']['subject_diff'] % (pendulum.now(timezone).to_date_string(), date_range,
-                                                            int(length_of_stay))
+            email_subject = cfg['email']['subject_diff'].format(**subject_vars)
         else:
-            email_subject = cfg['email']['subject'] % (pendulum.now(timezone).to_date_string(), date_range,
-                                                       int(length_of_stay))
+            email_subject = cfg['email']['subject'].format(**subject_vars)
 
         yag = yagmail.SMTP(config['email']['gmail_sender'])
         yag.send(

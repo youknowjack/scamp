@@ -30,10 +30,10 @@ results:
 
 email:
   gmail_sender: GMAIL_ACCOUNT_EMAIL_ADDRESS@gmail.com
-  heading: "<h2>%i night availability for %s</h2>"
-  heading_diff: "<h2>Newly available parks, %i nights, %s</h2>"
-  subject: "[%s] RV site availability %s (%i nights)"
-  subject_diff: "[%s] New availability for %s (%i nights)"
+  heading: "<h2>{length} night availability for {date}</h2>"
+  heading_diff: "<h2>Newly available parks, {length} nights, {date}</h2>"
+  subject: "[{send_date}] RV site availability {date} ({length} nights)"
+  subject_diff: "[{send_date}] New availability for {date} ({length} nights)"
   to:
     - TO_EMAIL_1
     - TO_EMAIL_2 etc.
