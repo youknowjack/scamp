@@ -18,12 +18,13 @@ import yaml
 
 
 class TravelTimer:
-    def __init__(self, google_maps_client, from_location, adjust_avg_mph, departure_time):
+    def __init__(self, google_maps_client, from_location, adjust_avg_mph, departure_time, max_travel_time):
         self.cache = {}
         self.google_maps_client = google_maps_client
         self.from_location = from_location
         self.adjust_avg_meters_per_sec = adjust_avg_mph * 1609.34 / 3600
         self.depart = departure_time
+        self.max_travel_time = max_travel_time
 
     def adjust_travel_time(self, meters, estimated_seconds):
         avg_speed = meters / estimated_seconds
@@ -48,6 +49,11 @@ class TravelTimer:
                 self.cache[to_location] = est_time
 
         return self.cache[to_location]
+
+    def allowed_time(self, est_time):
+        if self.max_travel_time > 0:
+            return est_time[0] < self.max_travel_time or (est_time[0] == self.max_travel_time and est_time[1] == 0)
+        return True
 
 
 def next_n_startdays(n, scan_from, day_of_week, days_to_add, timezone):
@@ -118,6 +124,8 @@ def collect_results(driver, host, travel_timer, seen_parks, site_includes, site_
             if book is not None and 'Book' in book.text:
                 park_id = parse_qs(urlparse(link['href']).query)['parkId'][0]
                 est_time = travel_timer.compute_estimate(link.text)
+                if not travel_timer.allowed_time(est_time):
+                    continue
                 for avail in card.findAll(class_='site_type_item_redesigned'):
                     avail_link = avail.find('a')
                     site_info = avail_link.text
@@ -179,7 +187,7 @@ def run_searches(cfg, args):
     from_location = get_option(cfg, 'travel', 'from')
     adjust_avg_mph = get_option(cfg, 'travel', 'adjust_avg_mph', default=0)
     first_departure = pendulum.parse(args.scan_from, tz=timezone).next(start_weekday).add(hours=usual_departure_hour)
-    travel_timer = TravelTimer(maps_client, from_location, adjust_avg_mph, first_departure)
+    travel_timer = TravelTimer(maps_client, from_location, adjust_avg_mph, first_departure, args.max_travel_time)
 
     chrome_options = Options()
     if cfg['selenium']['headless']:
@@ -272,6 +280,8 @@ if __name__ == '__main__':
                         help='number of days of availability to look for (default: 2)')
     parser.add_argument('--scan-weeks', dest='scan_weeks', action='store', type=int, default=4,
                         help='number of weeks to scan (default: 4)')
+    parser.add_argument('--max-ttime', dest='max_travel_time', action='store', type=int, default=-1,
+                        help='max number of hours willing to travel')
     parser.add_argument('--cache-file', dest='cache_file', action='store', default=None,
                         help='Cache file to use/update for comparison')
     parser.add_argument('--diff-only', dest='diff_only', action='store_true',
