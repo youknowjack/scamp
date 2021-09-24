@@ -263,7 +263,7 @@ if __name__ == '__main__':
     default_start = pendulum.now().add(days=-1).to_date_string()
     parser.add_argument('--scan-from', dest='scan_from', action='store', default=default_start,
                         help='date to start scan from (default yesterday: %s)' % default_start)
-    parser.add_argument('--start-dow', dest='start_dow', action='store', default=5,
+    parser.add_argument('--start-dow', dest='start_dow', action='store', type=int, default=5,
                         help='numeric day of week (Monday: 1) to look for availability (default Friday: 5)')
     parser.add_argument('--num-days', dest='num_days', action='store', type=int, default=2,
                         help='number of days of availability to look for (default: 2)')
