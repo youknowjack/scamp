@@ -104,7 +104,7 @@ def do_search(driver, date, nights, resolved_address, interest, looking_for, occ
     submit.click()
 
 
-def collect_results(driver, host, travel_timer, only_parks, seen_parks, site_includes, site_excludes,
+def collect_results(driver, host, travel_timer, only_parks, exclude_parks, seen_parks, site_includes, site_excludes,
                     sort_key, sort_reversed):
     results = []
     includes_pattern = re.compile('|'.join(site_includes))
@@ -114,6 +114,9 @@ def collect_results(driver, host, travel_timer, only_parks, seen_parks, site_inc
     only_park_ids = None
     if only_parks is not None:
         only_park_ids = [int(park_id) for park_id in only_parks.split(',')]
+    exclude_park_ids = None
+    if exclude_parks is not None:
+        exclude_park_ids = [int(park_id) for park_id in exclude_parks.split(',')]
     results_page_url = driver.current_url + "?currentPage=%i"
     while current_page < num_pages:
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -128,6 +131,8 @@ def collect_results(driver, host, travel_timer, only_parks, seen_parks, site_inc
             if book is not None and 'Book' in book.text:
                 park_id = parse_qs(urlparse(link['href']).query)['parkId'][0]
                 if only_park_ids is not None and int(park_id) not in only_park_ids:
+                    continue
+                if exclude_park_ids is not None and int(park_id) in exclude_park_ids:
                     continue
                 est_time = travel_timer.compute_estimate(link.text)
                 if not travel_timer.allowed_time(est_time):
@@ -212,7 +217,7 @@ def run_searches(cfg, args):
         else:
             omit_parks = set()
         results.append((start_day, collect_results(
-            driver, host, travel_timer, args.parks, omit_parks, site_includes, site_excludes, sort_key, sort_reversed)))
+            driver, host, travel_timer, args.parks, args.exclude_parks, omit_parks, site_includes, site_excludes, sort_key, sort_reversed)))
 
     if args.cache_file is not None:
         with open(args.cache_file, "w") as results_out:
@@ -290,6 +295,8 @@ if __name__ == '__main__':
                         help='max number of hours willing to travel')
     parser.add_argument('--parks', dest='parks', action='store', default=None,
                         help='comma-separated list of park IDs to include in results (exclusively)')
+    parser.add_argument('--exclude-parks', dest='exclude_parks', action='store', default=None,
+                        help='comma-separated list of park IDs to exclude from results (exclusively)')
     parser.add_argument('--cache-file', dest='cache_file', action='store', default=None,
                         help='Cache file to use/update for comparison')
     parser.add_argument('--diff-only', dest='diff_only', action='store_true',
