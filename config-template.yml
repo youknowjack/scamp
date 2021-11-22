@@ -16,6 +16,7 @@ travel:
   google_api_key: API_KEY_HERE (Google Maps Directions API enabled)
   from: FROM_ADDRESS
   adjust_avg_mph: ADJUST_VALUE # e.g. -10 if your average speed is 10mph less than Google Maps estimate
+  cache_file: /path/to/ttime-cache.json
 
 results:
   site_include:

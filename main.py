@@ -17,14 +17,36 @@ import yagmail
 import yaml
 
 
+def get_ttime_cache(cache_file):
+    cache = {}
+    if exists(cache_file):
+        with open(cache_file) as input_file:
+            results_by_date = json.load(input_file)
+            for (day, results) in results_by_date.items():
+                parks = {} 
+                for (park, time) in results.items():
+                    parks[park] = time
+                cache[day] = parks
+    return cache
+
+
 class TravelTimer:
-    def __init__(self, google_maps_client, from_location, adjust_avg_mph, departure_time, max_travel_time):
-        self.cache = {}
+    def __init__(self, google_maps_client, cache_file, from_location, adjust_avg_mph, departure_time, max_travel_time):
+        self.cache = get_ttime_cache(cache_file)
+        cache_key = departure_time.strftime("%Y-%m-%d")
+        if cache_key not in self.cache:
+            self.cache[cache_key] = {}
+        self.cur_cache = self.cache[cache_key]
+        self.cache_file = cache_file
         self.google_maps_client = google_maps_client
         self.from_location = from_location
         self.adjust_avg_meters_per_sec = adjust_avg_mph * 1609.34 / 3600
         self.depart = departure_time
         self.max_travel_time = max_travel_time
+
+    def save_cache(self):
+        with open(self.cache_file, "w") as outfile:
+            json.dump(self.cache, outfile, indent=2)
 
     def adjust_travel_time(self, meters, estimated_seconds):
         avg_speed = meters / estimated_seconds
@@ -36,7 +58,7 @@ class TravelTimer:
         return est_hours, est_minutes, round(estimated_seconds), round(miles)
 
     def compute_estimate(self, to_location):
-        if to_location not in self.cache:
+        if to_location not in self.cur_cache:
             directions = self.google_maps_client.directions(self.from_location, to_location, departure_time=self.depart)
             if directions is not None and len(directions) > 0:
                 full_trip = directions[0]['legs'][0]
@@ -46,9 +68,9 @@ class TravelTimer:
                 else:
                     seconds = full_trip['duration']['value']
                 est_time = self.adjust_travel_time(meters, seconds)
-                self.cache[to_location] = est_time
+                self.cur_cache[to_location] = est_time
 
-        return self.cache[to_location]
+        return self.cur_cache[to_location]
 
     def allowed_time(self, est_time):
         if self.max_travel_time > 0:
@@ -195,10 +217,11 @@ def run_searches(cfg, args):
     usual_departure_hour = get_option(cfg, 'results', 'usual_departure_hour')
 
     maps_client = googlemaps.Client(key=get_option(cfg, 'travel', 'google_api_key'))
+    ttime_cache_file = get_option(cfg, 'travel', 'cache_file')
     from_location = get_option(cfg, 'travel', 'from')
     adjust_avg_mph = get_option(cfg, 'travel', 'adjust_avg_mph', default=0)
     first_departure = pendulum.parse(args.scan_from, tz=timezone).next(start_weekday).add(hours=usual_departure_hour)
-    travel_timer = TravelTimer(maps_client, from_location, adjust_avg_mph, first_departure, args.max_travel_time)
+    travel_timer = TravelTimer(maps_client, ttime_cache_file, from_location, adjust_avg_mph, first_departure, args.max_travel_time)
 
     chrome_options = Options()
     if cfg['selenium']['headless']:
@@ -218,6 +241,8 @@ def run_searches(cfg, args):
             omit_parks = set()
         results.append((start_day, collect_results(
             driver, host, travel_timer, args.parks, args.exclude_parks, omit_parks, site_includes, site_excludes, sort_key, sort_reversed)))
+    
+    travel_timer.save_cache()
 
     if args.cache_file is not None:
         with open(args.cache_file, "w") as results_out:
