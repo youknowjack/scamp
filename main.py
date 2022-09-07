@@ -95,34 +95,34 @@ def do_search(driver, date, nights, resolved_address, interest, looking_for, occ
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "interest")))
 
     if interest is not None:
-        interest_selector = Select(driver.find_element_by_id('interest'))
+        interest_selector = Select(driver.find_element(By.ID, 'interest'))
         interest_selector.select_by_value(interest)
 
     if looking_for is not None:
-        looking_for_selector = Select(driver.find_element_by_id('lookingFor'))
+        looking_for_selector = Select(driver.find_element(By.ID, 'lookingFor'))
         looking_for_selector.select_by_value(str(looking_for))
 
     if occupants is not None:
-        occupants_input = driver.find_element_by_id('camping_2001_3012')
+        occupants_input = driver.find_element(By.ID, 'camping_2001_3012')
         occupants_input.clear()
         occupants_input.send_keys(str(occupants))
 
     if rv_length is not None:
-        length_input = driver.find_element_by_id('camping_2001_3013')
+        length_input = driver.find_element(By.ID, 'camping_2001_3013')
         length_input.clear()
         length_input.send_keys(str(rv_length))
 
-    date_input = driver.find_element_by_id('campingDate')
+    date_input = driver.find_element(By.ID, 'campingDate')
     date_input.clear()
     date_input.send_keys(date)
     date_input.send_keys(Keys.ENTER)  # necessary to clear calendar popup
 
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "lengthOfStay")))
-    nights_input = driver.find_element_by_id('lengthOfStay')
+    nights_input = driver.find_element('id', 'lengthOfStay')
     nights_input.clear()
     nights_input.send_keys(str(nights))
 
-    submit = driver.find_element_by_css_selector("#btnDiv button")
+    submit = driver.find_element(By.CSS_SELECTOR, "#btnDiv button")
     submit.click()
 
 
