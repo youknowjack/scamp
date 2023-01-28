@@ -31,7 +31,7 @@ def get_ttime_cache(cache_file):
 
 
 class TravelTimer:
-    def __init__(self, google_maps_client, cache_file, from_location, adjust_avg_mph, departure_time, max_travel_time):
+    def __init__(self, google_maps_client, cache_file, map_search_postfix, from_location, adjust_avg_mph, departure_time, max_travel_time):
         self.cache = get_ttime_cache(cache_file)
         cache_key = departure_time.strftime("%Y-%m-%d")
         if cache_key not in self.cache:
@@ -39,6 +39,7 @@ class TravelTimer:
         self.cur_cache = self.cache[cache_key]
         self.cache_file = cache_file
         self.google_maps_client = google_maps_client
+        self.map_search_postfix = map_search_postfix
         self.from_location = from_location
         self.adjust_avg_meters_per_sec = adjust_avg_mph * 1609.34 / 3600
         self.depart = departure_time
@@ -58,6 +59,8 @@ class TravelTimer:
         return est_hours, est_minutes, round(estimated_seconds), round(miles)
 
     def compute_estimate(self, to_location):
+        if self.map_search_postfix is not None:
+            to_location = "%s %s" % (to_location, self.map_search_postfix)
         if to_location not in self.cur_cache:
             directions = self.google_maps_client.directions(self.from_location, to_location, departure_time=self.depart)
             if directions is not None and len(directions) > 0:
@@ -87,8 +90,8 @@ def next_n_startdays(n, scan_from, day_of_week, days_to_add, timezone):
     return startdays
 
 
-def do_search(driver, date, nights, resolved_address, interest, looking_for, occupants, rv_length):
-    driver.get("https://texasstateparks.reserveamerica.com/unifSearch.do")
+def do_search(driver, host, date, nights, resolved_address, interest, looking_for, occupants, rv_length):
+    driver.get("%s/unifSearch.do" % host)
 
     if resolved_address is not None:
         driver.execute_script("UnifSearchEngine.selectResolvedAddress('" + resolved_address + "','0', 3)")
@@ -103,9 +106,12 @@ def do_search(driver, date, nights, resolved_address, interest, looking_for, occ
         looking_for_selector.select_by_value(str(looking_for))
 
     if occupants is not None:
-        occupants_input = driver.find_element(By.ID, 'camping_2001_3012')
-        occupants_input.clear()
-        occupants_input.send_keys(str(occupants))
+        try:
+            occupants_input = driver.find_element(By.ID, 'camping_2001_3012')
+            occupants_input.clear()
+            occupants_input.send_keys(str(occupants))
+        except:
+            pass
 
     if rv_length is not None:
         length_input = driver.find_element(By.ID, 'camping_2001_3013')
@@ -144,8 +150,11 @@ def collect_results(driver, host, travel_timer, only_parks, exclude_parks, seen_
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         if current_page == 0:
             pagination = soup.find(class_='usearch_results_control')
-            page_options = pagination.findAll('option')
-            num_pages = len(page_options)
+            if pagination is not None:
+                page_options = pagination.findAll('option')
+                num_pages = len(page_options)
+            else:
+                num_pages = 1
         for card in soup.findAll(class_='facility_view_card'):
             link = card.find(class_='facility_link')
             avails = []
@@ -217,11 +226,12 @@ def run_searches(cfg, args):
     usual_departure_hour = get_option(cfg, 'results', 'usual_departure_hour')
 
     maps_client = googlemaps.Client(key=get_option(cfg, 'travel', 'google_api_key'))
+    map_search_postfix = get_option(cfg, 'travel', 'map_search_postfix', default=None)
     ttime_cache_file = get_option(cfg, 'travel', 'cache_file')
     from_location = get_option(cfg, 'travel', 'from')
     adjust_avg_mph = get_option(cfg, 'travel', 'adjust_avg_mph', default=0)
     first_departure = pendulum.parse(args.scan_from, tz=timezone).next(start_weekday).add(hours=usual_departure_hour)
-    travel_timer = TravelTimer(maps_client, ttime_cache_file, from_location, adjust_avg_mph, first_departure, args.max_travel_time)
+    travel_timer = TravelTimer(maps_client, ttime_cache_file, map_search_postfix, from_location, adjust_avg_mph, first_departure, args.max_travel_time)
 
     chrome_options = Options()
     if cfg['selenium']['headless']:
@@ -234,7 +244,8 @@ def run_searches(cfg, args):
 
     results = []
     for start_day in next_n_startdays(num_weeks, args.scan_from, start_weekday, 7, timezone):
-        do_search(driver, start_day, length_of_stay, resolved_address, interest, looking_for, occupants, rv_length)
+        print("Searching start date %s" % start_day)
+        do_search(driver, host, start_day, length_of_stay, resolved_address, interest, looking_for, occupants, rv_length)
         if start_day in prev_parks_by_date:
             omit_parks = prev_parks_by_date[start_day]
         else:
