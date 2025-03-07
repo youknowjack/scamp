@@ -15,6 +15,7 @@ from selenium.webdriver.common.keys import Keys
 from urllib.parse import urlparse, parse_qs
 import yagmail
 import yaml
+import time
 
 
 def get_ttime_cache(cache_file):
@@ -122,6 +123,7 @@ def do_search(driver, host, date, nights, resolved_address, interest, looking_fo
     date_input.clear()
     date_input.send_keys(date)
     date_input.send_keys(Keys.ENTER)  # necessary to clear calendar popup
+    time.sleep(1)
 
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "lengthOfStay")))
     nights_input = driver.find_element('id', 'lengthOfStay')
